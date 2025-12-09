@@ -1,0 +1,29 @@
+# Executables
+server
+client
+
+# Object files
+*.o
+
+# macOS
+.DS_Store
+
+# Debug symbols
+*.dSYM/
+
+# Temporary files
+*~
+*.swp
+
+# Test files you might create
+test_*.txt
+upload_*.bin
+
+# Log files your program might generate
+server.log
+client.log
+
+# Large test files
+*.iso
+*.img
+*.zip

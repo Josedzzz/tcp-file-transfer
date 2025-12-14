@@ -1,6 +1,8 @@
 #include "logger.h"
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 // ANSI color codes for better terminal output
@@ -63,5 +65,45 @@ void logger_log(logger_t *logger, log_level_t level, const char *file, int line,
       color = COLOR_INFO;
     break;
   case LOG_LEVEL_WARN:
+    if (logger->use_colors)
+      color = COLOR_WARN;
+    break;
+  case LOG_LEVEL_ERROR:
+    if (logger->use_colors)
+      color = COLOR_ERROR;
+    break;
+  default:
+    level_str = "UNKNOWN";
   }
+  if (logger->use_colors)
+    reset = COLOR_RESET;
+
+  // Just filename, not full path
+  const char *filename = strrchr(file, '/');
+  if (filename)
+    filename++;
+  else
+    filename = file;
+
+  // Print header
+  fprintf(logger->file, "%s[%s] %s%s [%s:%d %s()] ", color, timestamp,
+          level_str, reset, filename, line, func);
+
+  // Print message
+  va_list args;
+  va_start(args, format);
+  vfprintf(logger->file, format, args);
+  va_end(args);
+
+  // Newline
+  fprintf(logger->file, "\n");
+}
+
+void logger_destroy(logger_t *logger) {
+  if (!logger)
+    return;
+  if (logger->file && logger->file != stdout) {
+    fclose(logger->file);
+  }
+  free(logger);
 }

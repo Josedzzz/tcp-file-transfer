@@ -6,8 +6,10 @@
 #include <string.h>
 
 void handle_error(const char *msg);
-void send_file_to_server(int sock, const char *filename);
-void receive_file_from_server(int sock, const char *filename);
+void send_file_to_server(int sock, const char *filename,
+                         logger_t *client_logger);
+void receive_file_from_server(int sock, const char *filename,
+                              logger_t *client_logger);
 void list_server_files(int sock);
 void show_menu();
 
@@ -80,7 +82,7 @@ int main(int argc, char *argv[]) {
       fgets(filename, MAX_FILENAME, stdin);
       filename[strcspn(filename, "\n")] = 0; // Remove newline
       LOG_INFO(client_logger, "User wants to send file: %s", filename);
-      send_file_to_server(sock, filename);
+      send_file_to_server(sock, filename, client_logger);
       break;
 
     case CMD_LIST_FILES:
@@ -97,7 +99,7 @@ int main(int argc, char *argv[]) {
       LOG_INFO(client_logger, "User wants to download: %s", filename);
       strncpy(header.filename, filename, MAX_FILENAME - 1);
       send(sock, &header, sizeof(header), 0);
-      receive_file_from_server(sock, filename);
+      receive_file_from_server(sock, filename, client_logger);
       break;
 
     case CMD_EXIT:
@@ -123,7 +125,8 @@ void handle_error(const char *msg) {
   exit(EXIT_FAILURE);
 }
 
-void send_file_to_server(int sock, const char *filename) {
+void send_file_to_server(int sock, const char *filename,
+                         logger_t *client_logger) {
   FILE *file;
   char buffer[BUFFER_SIZE];
   size_t bytes_read;
@@ -133,6 +136,7 @@ void send_file_to_server(int sock, const char *filename) {
   // Check if files exists
   if (stat(filename, &file_stat) < 0) {
     perror("File not found");
+    LOG_ERROR(client_logger, "File not found: %s", filename);
     return;
   }
 
@@ -144,15 +148,18 @@ void send_file_to_server(int sock, const char *filename) {
 
   // Send header
   send(sock, &header, sizeof(header), 0);
+  LOG_DEBUG(client_logger, "Send header of the file");
 
   // Open and send file
   file = fopen(filename, "rb");
   if (!file) {
     perror("Failed to open file");
+    LOG_ERROR(client_logger, "Failed to open the file: %s", filename);
     return;
   }
 
   printf("Sending file: %s\n", filename);
+  LOG_DEBUG(client_logger, "Sending file: %s", filename);
 
   while ((bytes_read = fread(buffer, 1, BUFFER_SIZE, file)) > 0) {
     send(sock, buffer, bytes_read, 0);
@@ -161,10 +168,12 @@ void send_file_to_server(int sock, const char *filename) {
   }
 
   printf("\nFile sent successfully\n");
+  LOG_INFO(client_logger, "File sent succesfully: %s", filename);
   fclose(file);
 }
 
-void receive_file_from_server(int sock, const char *filename) {
+void receive_file_from_server(int sock, const char *filename,
+                              logger_t *client_logger) {
   char buffer[BUFFER_SIZE];
   FILE *file;
   ssize_t bytes_received;
@@ -175,22 +184,30 @@ void receive_file_from_server(int sock, const char *filename) {
   bytes_received = recv(sock, &header, sizeof(header), 0);
   if (bytes_received <= 0) {
     perror("Failed to receive header");
+    LOG_ERROR(client_logger, "Failed to receive the header from file: %s",
+              filename);
     return;
   }
 
   if (header.file_size == 0) {
     printf("File not found on server\n");
+    LOG_ERROR(client_logger, "File not found on server: %s", filename);
     return;
   }
+
+  LOG_INFO(client_logger, "Header received succesfully from file: %s",
+           filename);
 
   // Open file for writing
   file = fopen(filename, "wb");
   if (!file) {
     perror("Failed to create file");
+    LOG_ERROR(client_logger, "Failed to create file: %s", filename);
     return;
   }
 
   printf("Receiving file: %s (%u bytes)\n", filename, header.file_size);
+  LOG_DEBUG(client_logger, "Receiving file: %s", filename);
 
   // Receive file data
   while (total_received < header.file_size) {
@@ -202,6 +219,7 @@ void receive_file_from_server(int sock, const char *filename) {
 
     if (bytes_received <= 0) {
       perror("Receive error");
+      LOG_ERROR(client_logger, "Receive error from file: %s", filename);
       break;
     }
 
@@ -215,6 +233,7 @@ void receive_file_from_server(int sock, const char *filename) {
   }
 
   printf("\nFile received successfully\n");
+  LOG_INFO(client_logger, "File received successfully: %s", filename);
   fclose(file);
 }
 

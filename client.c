@@ -1,4 +1,6 @@
 #include "common.h"
+#include "logger.h"
+#include <errno.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -21,11 +23,24 @@ int main(int argc, char *argv[]) {
     exit(1);
   }
 
+  // Initialize client logger
+  logger_t *client_logger = logger_create("client.log", LOG_LEVEL_INFO);
+  if (!client_logger) {
+    fprintf(stderr, "Failed to initialize logger\n");
+    return 1;
+  }
+
+  LOG_INFO(client_logger, "=== TCP File Transfer Client Starting ===");
+  LOG_INFO(client_logger, "Connecting to server: %s:%d", argv[1], PORT);
+
   // Create socket
   sock = socket(AF_INET, SOCK_STREAM, 0);
   if (sock < 0) {
+    LOG_ERROR(client_logger, "Socket creation failed: %s", strerror(errno));
     handle_error("Socket creation failed");
   }
+
+  LOG_DEBUG(client_logger, "Socket created (fd: %d)", sock);
 
   // Configure server address
   memset(&server_addr, 0, sizeof(server_addr));
@@ -33,13 +48,18 @@ int main(int argc, char *argv[]) {
   server_addr.sin_port = htons(PORT);
 
   if (inet_pton(AF_INET, argv[1], &server_addr.sin_addr) <= 0) {
+    LOG_ERROR(client_logger, "Invalid address: %s", argv[1]);
     handle_error("Invalid address");
   }
 
+  // Connect to server
+  LOG_INFO(client_logger, "Connecting to %s:%d...", argv[1], PORT);
   if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+    LOG_ERROR(client_logger, "Connection failed: %s", strerror(errno));
     handle_error("Connection failed");
   }
 
+  LOG_INFO(client_logger, "Connected to server %s:%d", argv[1], PORT);
   printf("Connected to server %s:%d\n", argv[1], PORT);
 
   // Client loop
@@ -52,15 +72,19 @@ int main(int argc, char *argv[]) {
     memset(&header, 0, sizeof(header));
     header.command = choice;
 
+    LOG_DEBUG(client_logger, "User selected option: %d", choice);
+
     switch (choice) {
     case CMD_SEND_FILE:
       printf("Enter filename to send: ");
       fgets(filename, MAX_FILENAME, stdin);
       filename[strcspn(filename, "\n")] = 0; // Remove newline
+      LOG_INFO(client_logger, "User wants to send file: %s", filename);
       send_file_to_server(sock, filename);
       break;
 
     case CMD_LIST_FILES:
+      LOG_INFO(client_logger, "Requesting file list from server");
       header.command = CMD_LIST_FILES;
       send(sock, &header, sizeof(header), 0);
       list_server_files(sock);
@@ -70,22 +94,26 @@ int main(int argc, char *argv[]) {
       printf("Enter filename to download: ");
       fgets(filename, MAX_FILENAME, stdin);
       filename[strcspn(filename, "\n")] = 0;
+      LOG_INFO(client_logger, "User wants to download: %s", filename);
       strncpy(header.filename, filename, MAX_FILENAME - 1);
       send(sock, &header, sizeof(header), 0);
       receive_file_from_server(sock, filename);
       break;
 
     case CMD_EXIT:
+      LOG_INFO(client_logger, "Exiting client");
       send(sock, &header, sizeof(header), 0);
       printf("Exiting...\n");
       close(sock);
       return 0;
 
     default:
+      LOG_WARN(client_logger, "Invalid choice: %d", choice);
       printf("Invalid choice\n");
     }
   }
 
+  logger_destroy(client_logger);
   close(sock);
   return 0;
 }
